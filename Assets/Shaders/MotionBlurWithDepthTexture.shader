@@ -54,6 +54,7 @@
             //OpenGL    [-1,1]     x,y,d都在[0,1]，而NDC为[-1,1]，因此需要映射
             //float4 H = float4(i.uv.x * 2 - 1, i.uv.y * 2 - 1, d * 2 - 1, 1);
 
+            //第一版理解(思路没问题，但可以不这样)
             //其实这个地方H应该先乘以Wclip进行反向齐次除法的，但wclip在齐次除法后已经丢失(Wclip指裁剪空间下的W分量)
             //后续理论上要通过屏幕空间中两个坐标位置相减，但实际上因为没办法求得worldPos的真实值(丢失Wclip)
             //因此在后续利用这个worldPos反向计算上一帧的屏幕空间中的值的时候完全可以取巧，即都不跟Wclip挂钩
@@ -63,14 +64,26 @@
             //                                               |z|
             //                                               |1|
             //理论上：float4 D = mul(_CurrentViewProjectionInverseMatrix, H * Wclip);
-            //       float4 worldPos = D;
-            float4 D = mul(_CurrentViewProjectionInverseMatrix, H);
-            float4 worldPos = D;
+            //        float4 worldPos = D;
+            //实际上：float4 D = mul(_CurrentViewProjectionInverseMatrix, H);
+            //        float4 worldPos = D;        
+            //第一版原因如上↑
 
+            //第二版原因如下↓
+            //勘误：我原本以为Wclip已经丢失没办法计算，没想到今天推导矩阵的时候发现Wclip可以逆向推导出来，这时候它与D的关系为：Wclip = 1 / D.w
+            //其本质是因为视角空间，也就是观察空间下W分量为1，因此我们经过float4 D = mul(_CurrentViewProjectionInverseMatrix, H)计算出来的
+            //D的值其实为1/Wclip,因此移项后我们就可以发现可以得出Wclip的值进行计算，即D/D.w,其实就等于D * Wclip， 
+
+            float4 D = mul(_CurrentViewProjectionInverseMatrix, H);
+            float4 worldPos = D / D.w;
+            
             //这里的Pos是NDC空间中的，这里的W是原本保留的Wclip，除以W以后就无法保留了，这里因为上述原因，因此我们直接没有必要进行W齐次除法
             float4 currentPos = H;
             float4 previousPos = mul(_PreviousViewProjectionMatrix, worldPos);
-            //previousPos /= previousPos.w;   这里舍弃
+            //previousPos /= previousPos.w;   第一版这里舍弃  
+            //第二版这里修改原因如上
+            previousPos /= previousPos.w;
+            
 
             //通过这一帧减去上一帧的位置变化得到NDC中的速度，但这里NDC和屏幕空间其实已经是一次线性映射了，因此用NDC来计算相对速度也没什么问题
             float2 velocity = (currentPos.xy - previousPos.xy) / 2.0f;
